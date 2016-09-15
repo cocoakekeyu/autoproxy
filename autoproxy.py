@@ -170,13 +170,11 @@ class AutoProxyMiddleware(object):
         self.fecth_new_proxy()
         self.test_proxyes(self.proxyes)
 
-    def append_proxy(self):
+    def append_proxy(self, p):
         """
         辅助函数，将测试通过的代理添加到列表
         """
-        for k, v in self.proxyes.iteritems():
-            if v and k not in self.proxy:
-                self.proxy.append(k)
+        self.proxy.append(p)
 
     def fecth_new_proxy(self):
         """
@@ -241,8 +239,8 @@ class ProxyValidate(threading.Thread):
     def test_proxyes(self, proxyes):
         for proxy, valid in proxyes.iteritems():
             if(self.check_proxy(proxy)):
-                self.autoproxy.proxyes.update({proxy: True})
-                self.autoproxy.append_proxy()
+                self.autoproxy.proxyes[proxy] = True
+                self.autoproxy.append_proxy(proxy)
 
     def check_proxy(self, proxy):
         proxy_handler = urllib2.ProxyHandler({'http': proxy})
