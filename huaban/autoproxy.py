@@ -174,7 +174,8 @@ class AutoProxyMiddleware(object):
         """
         辅助函数，将测试通过的代理添加到列表
         """
-        self.proxy.append(p)
+        if p not in self.proxy:
+            self.proxy.append(p)
 
     def fecth_new_proxy(self):
         """
