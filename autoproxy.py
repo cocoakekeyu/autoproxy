@@ -4,6 +4,7 @@ import logging
 import threading
 import math
 import re
+import time
 
 from bs4 import BeautifulSoup
 from twisted.internet import defer
@@ -41,7 +42,7 @@ class AutoProxyMiddleware(object):
         self.proxyes = {}
         self.counter_proxy = {}
 
-        self.fecth_new_proxy()
+        self.fetch_new_proxy()
         self.test_proxyes(self.proxyes, wait=True)
         logger.info('Use proxy : %s', self.proxy)
 
@@ -62,7 +63,7 @@ class AutoProxyMiddleware(object):
             if 'proxy' in request.meta:
                 del request.meta['proxy']
 
-    def process_respose(self, request, response, spider):
+    def process_response(self, request, response, spider):
         if not self._is_enabled_for_request(request):
             return response
 
@@ -73,9 +74,9 @@ class AutoProxyMiddleware(object):
             new_request.dont_filter = True
             return new_request
 
-        if self.re:
+        if self.ban_re:
             try:
-                pattern = re.compile(self.re)
+                pattern = re.compile(self.ban_re)
             except TypeError:
                 logger.error('Wrong "ban_re", please check settings')
                 return response
@@ -123,7 +124,7 @@ class AutoProxyMiddleware(object):
             if proxy_valid:
                 break
             if self.len_valid_proxy() == 0:
-                logger.info('Available proxys is none.Waiting for fecth new proxy.')
+                logger.info('Available proxys is none.Waiting for fetch new proxy.')
                 break
         logger.info('Change proxy to %s', self.proxy[self.proxy_index])
         logger.info('Available proxys[%s]: %s', self.len_valid_proxy(), self.valid_proxyes())
@@ -167,7 +168,7 @@ class AutoProxyMiddleware(object):
         """
         扩展代理。测试代理是异步的。
         """
-        self.fecth_new_proxy()
+        self.fetch_new_proxy()
         self.test_proxyes(self.proxyes)
 
     def append_proxy(self, p):
@@ -177,15 +178,15 @@ class AutoProxyMiddleware(object):
         if p not in self.proxy:
             self.proxy.append(p)
 
-    def fecth_new_proxy(self):
+    def fetch_new_proxy(self):
         """
         获取新的代理，目前从三个网站抓取代理，每个网站开一个线程抓取代理。
         """
-        logger.info('Starting fecth new proxy.')
+        logger.info('Starting fetch new proxy.')
         urls = ['xici', 'ip3336', 'kxdaili']
         threads = []
         for url in urls:
-            t = ProxyFecth(self.proxyes, url)
+            t = ProxyFetch(self.proxyes, url)
             threads.append(t)
             t.start()
         for t in threads:
@@ -256,17 +257,17 @@ class ProxyValidate(threading.Thread):
             return False
 
 
-class ProxyFecth(threading.Thread):
+class ProxyFetch(threading.Thread):
 
     def __init__(self, proxyes, url):
-        super(ProxyFecth, self).__init__()
+        super(ProxyFetch, self).__init__()
         self.proxyes = proxyes
         self.url = url
 
     def run(self):
-        self.proxyes.update(getattr(self, 'fecth_proxy_from_' + self.url)())
+        self.proxyes.update(getattr(self, 'fetch_proxy_from_' + self.url)())
 
-    def fecth_proxy_from_xici(self):
+    def fetch_proxy_from_xici(self):
         proxyes = {}
         url = "http://www.xicidaili.com/nn/"
         try:
@@ -282,11 +283,11 @@ class ProxyFecth(threading.Thread):
                     proxy = ''.join(['http://', ip, ':', port]).encode('utf-8')
                     proxyes[proxy] = False
         except Exception as e:
-            logger.error('Failed to fecth_proxy_from_xici. Exception[%s]', e)
+            logger.error('Failed to fetch_proxy_from_xici. Exception[%s]', e)
 
         return proxyes
 
-    def fecth_proxy_from_ip3336(self):
+    def fetch_proxy_from_ip3336(self):
         proxyes = {}
         url = 'http://www.ip3366.net/free/?stype=1&page='
         try:
@@ -302,11 +303,11 @@ class ProxyFecth(threading.Thread):
                     proxy = ''.join(['http://', ip, ':', port])
                     proxyes[proxy] = False
         except Exception as e:
-            logger.error('Failed to fecth_proxy_from_ip3336. Exception[%s]', e)
+            logger.error('Failed to fetch_proxy_from_ip3336. Exception[%s]', e)
 
         return proxyes
 
-    def fecth_proxy_from_kxdaili(self):
+    def fetch_proxy_from_kxdaili(self):
         proxyes = {}
         url = 'http://www.kxdaili.com/dailiip/1/%d.html'
         try:
@@ -322,14 +323,21 @@ class ProxyFecth(threading.Thread):
                     proxy = ''.join(['http://', ip, ':', port])
                     proxyes[proxy] = False
         except Exception as e:
-            logger.error('Failed to fecth_proxy_from_kxdaili. Exception[%s]', e)
+            logger.error('Failed to fetch_proxy_from_kxdaili. Exception[%s]', e)
 
         return proxyes
 
     def get_soup(self, url):
         request = urllib2.Request(url)
         request.add_header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36")
-        html_doc = urllib2.urlopen(request).read()
+        while True:
+            try:
+                html_doc = urllib2.urlopen(request, timeout=30).read()
+                break
+            except:
+                logger.info("Fetch proxy from {} fail, will try later.".format(url))
+                time.sleep(120)
+
 
         soup = BeautifulSoup(html_doc)
 
